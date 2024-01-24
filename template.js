@@ -42,7 +42,6 @@ if (isLoggingEnabled) {
 
 return sendHttpRequest(storeUrl, {method: 'POST', headers: { 'Content-Type': 'application/json' }}, JSON.stringify(postBody))
   .then((documents) => {
-    logToConsole('body: ' + JSON.stringify(documents.body));
       let body = JSON.parse(documents.body);
       let document = body && body.length > 0 ? body[0] : {};
 
