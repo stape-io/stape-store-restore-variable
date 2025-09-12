@@ -1,3 +1,5 @@
+/// <reference path="./server-gtm-sandboxed-apis.d.ts" />
+
 const sendHttpRequest = require('sendHttpRequest');
 const encodeUriComponent = require('encodeUriComponent');
 const JSON = require('JSON');
@@ -7,193 +9,176 @@ const getContainerVersion = require('getContainerVersion');
 const generateRandom = require('generateRandom');
 const getTimestampMillis = require('getTimestampMillis');
 const makeString = require('makeString');
+const BigQuery = require('BigQuery');
 
-const isLoggingEnabled = determinateIsLoggingEnabled();
-const traceId = isLoggingEnabled ? getRequestHeader('trace-id') : undefined;
+/*==============================================================================
+==============================================================================*/
+
+const traceId = getRequestHeader('trace-id');
 
 const identifiersValues = getIdentifiersValues(data.identifiers);
 if (identifiersValues.length === 0) {
-    return {};
+  return {};
 }
 
-let storeUrl = getStoreUrl();
-let postBody = {
-    data: [[
-      'identifiersValues',
-      'array-contains-any',
-      identifiersValues
-    ]],
-    limit: 1
+const storeUrl = getStoreUrl();
+const postBody = {
+  data: [['identifiersValues', 'array-contains-any', identifiersValues]],
+  limit: 1
 };
 
-if (isLoggingEnabled) {
-    logToConsole(
-      JSON.stringify({
-          Name: 'StapeStoreReStore',
-          Type: 'Request',
-          TraceId: traceId,
-          EventName: 'StapeStoreReStoreGet',
-          RequestMethod: 'POST',
-          RequestUrl: storeUrl,
-          RequestBody: postBody,
-      })
-    );
-}
+log({
+  Name: 'StapeStoreReStore',
+  Type: 'Request',
+  TraceId: traceId,
+  EventName: 'StapeStoreReStoreGet',
+  RequestMethod: 'POST',
+  RequestUrl: storeUrl,
+  RequestBody: postBody
+});
 
-return sendHttpRequest(storeUrl, {method: 'POST', headers: { 'Content-Type': 'application/json' }}, JSON.stringify(postBody))
-  .then((documents) => {
-      let body = JSON.parse(documents.body);
-      let document = body && body.length > 0 ? body[0] : {};
+return sendHttpRequest(
+  storeUrl,
+  { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+  JSON.stringify(postBody)
+).then(
+  (documents) => {
+    const body = JSON.parse(documents.body);
+    const document = body && body.length > 0 ? body[0] : {};
 
-      return restoreData(document);
-  }, () => {
-      return restoreData({});
-  });
+    return restoreData(document);
+  },
+  () => {
+    return restoreData({});
+  }
+);
+
+/*==============================================================================
+  Vendor related functions
+==============================================================================*/
 
 function restoreData(document) {
-    let documentKey = document.key || generateDocumentKey();
-    let storedData = document.data || {};
-    let dataToStore = {};
+  const documentKey = document.key || generateDocumentKey();
+  const storedData = document.data || {};
+  const dataToStore = {};
 
+  log({
+    Name: 'StapeStoreReStore',
+    Type: 'Response',
+    TraceId: traceId,
+    EventName: 'StapeStoreReStoreGet',
+    ResponseStatusCode: 200,
+    ResponseHeaders: {},
+    ResponseBody: storedData
+  });
 
-    if (isLoggingEnabled) {
-        logToConsole(
-          JSON.stringify({
-              Name: 'StapeStoreReStore',
-              Type: 'Response',
-              TraceId: traceId,
-              EventName: 'StapeStoreReStoreGet',
-              ResponseStatusCode: 200,
-              ResponseHeaders: {},
-              ResponseBody: storedData,
-          })
-        );
-    }
+  if (data.dataValues && data.dataValues.length > 0) {
+    data.dataValues.forEach(function (dataObject) {
+      const item = dataObject.value;
 
-    if (data.dataValues && data.dataValues.length > 0) {
-        data.dataValues.forEach(function (dataObject) {
-            let item = dataObject.value;
+      if (item && item.length > 0) {
+        dataToStore[dataObject.name] = item;
+      } else if (storedData.data && storedData.data[dataObject.name]) {
+        dataToStore[dataObject.name] = storedData.data[dataObject.name];
+      }
+    });
+  }
 
-            if (item && item.length > 0) {
-                dataToStore[dataObject.name] = item;
-            } else if (storedData.data && storedData.data[dataObject.name]) {
-                dataToStore[dataObject.name] = storedData.data[dataObject.name];
-            }
-        });
-    }
+  if (getObjectLength(dataToStore) === 0 || data.onlyRestore) {
+    return dataToStore;
+  }
 
-    if (getObjectLength(dataToStore) === 0 || data.onlyRestore) {
-        return dataToStore;
-    }
+  const writeUrl = getWriteUrl(documentKey);
+  const mergedIdentifiers = mergeIdentifiers(storedData.identifiers, data.identifiers);
+  const objectToStore = {
+    identifiers: mergedIdentifiers,
+    identifiersValues: getIdentifiersValues(mergedIdentifiers),
+    data: dataToStore
+  };
 
-    let writeUrl = getWriteUrl(documentKey);
-    let mergedIdentifiers = mergeIdentifiers(storedData.identifiers, data.identifiers);
-    let objectToStore = {
-        identifiers: mergedIdentifiers,
-        identifiersValues: getIdentifiersValues(mergedIdentifiers),
-        data: dataToStore,
-    };
+  log({
+    Name: 'StapeStoreReStore',
+    Type: 'Request',
+    TraceId: traceId,
+    EventName: 'StapeStoreReStorePost',
+    RequestMethod: 'POST',
+    RequestUrl: writeUrl,
+    RequestBody: objectToStore
+  });
 
-    if (isLoggingEnabled) {
-        logToConsole(
-          JSON.stringify({
-              Name: 'StapeStoreReStore',
-              Type: 'Request',
-              TraceId: traceId,
-              EventName: 'StapeStoreReStorePost',
-              RequestMethod: 'POST',
-              RequestUrl: writeUrl,
-              RequestBody: objectToStore,
-          })
-        );
-    }
-
-    return sendHttpRequest(writeUrl, {method: 'PUT', headers: { 'Content-Type': 'application/json' }}, JSON.stringify(objectToStore))
-      .then(() => {
-          if (isLoggingEnabled) {
-              logToConsole(
-                JSON.stringify({
-                    Name: 'StapeStoreReStore',
-                    Type: 'Response',
-                    TraceId: traceId,
-                    EventName: 'StapeStoreReStorePost',
-                    ResponseStatusCode: 200,
-                    ResponseHeaders: {},
-                    ResponseBody: {},
-                })
-              );
-          }
-
-          return dataToStore;
-      }, function () {
-          if (isLoggingEnabled) {
-              logToConsole(
-                JSON.stringify({
-                    Name: 'StapeStoreReStore',
-                    Type: 'Response',
-                    TraceId: traceId,
-                    EventName: 'StapeStoreReStorePost',
-                    ResponseStatusCode: 500,
-                    ResponseHeaders: {},
-                    ResponseBody: {},
-                })
-              );
-          }
-
-          return dataToStore;
+  return sendHttpRequest(
+    writeUrl,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' } },
+    JSON.stringify(objectToStore)
+  ).then(
+    () => {
+      log({
+        Name: 'StapeStoreReStore',
+        Type: 'Response',
+        TraceId: traceId,
+        EventName: 'StapeStoreReStorePost',
+        ResponseStatusCode: 200,
+        ResponseHeaders: {},
+        ResponseBody: {}
       });
+
+      return dataToStore;
+    },
+    () => {
+      log({
+        Name: 'StapeStoreReStore',
+        Type: 'Response',
+        TraceId: traceId,
+        EventName: 'StapeStoreReStorePost',
+        ResponseStatusCode: 500,
+        ResponseHeaders: {},
+        ResponseBody: {}
+      });
+
+      return dataToStore;
+    }
+  );
 }
 
 function getIdentifiersValues(identifiers) {
-    let identifiersValues = [];
+  const identifiersValues = [];
 
-    if (identifiers && identifiers.length > 0) {
-        identifiers.forEach(function (identifier) {
-            if (identifier.value) {
-                identifiersValues.push(identifier.value);
-            }
-        });
-    }
+  if (identifiers && identifiers.length > 0) {
+    identifiers.forEach(function (identifier) {
+      if (identifier.value) {
+        identifiersValues.push(identifier.value);
+      }
+    });
+  }
 
-    return identifiersValues;
+  return identifiersValues;
 }
 
 function mergeIdentifiers(oldIdentifiers, newIdentifiers) {
-    let identifiers = [];
+  let identifiers = [];
 
-    if (oldIdentifiers && oldIdentifiers.length > 0) {
-        identifiers = oldIdentifiers;
-    }
+  if (oldIdentifiers && oldIdentifiers.length > 0) {
+    identifiers = oldIdentifiers;
+  }
 
-    if (newIdentifiers && newIdentifiers.length > 0) {
-        newIdentifiers.forEach(function (newIdentifier) {
-            let identifierFound = false;
+  if (newIdentifiers && newIdentifiers.length > 0) {
+    newIdentifiers.forEach(function (newIdentifier) {
+      let identifierFound = false;
 
-            identifiers.forEach(function (identifier) {
-                if (identifier.name === newIdentifier.name && newIdentifier.value) {
-                    identifier.value = newIdentifier.value;
-                    identifierFound = true;
-                }
-            });
-
-            if (!identifierFound && newIdentifier.value) {
-                identifiers.push(newIdentifier);
-            }
-        });
-    }
-
-    return identifiers;
-}
-
-function getObjectLength(object) {
-    let length = 0;
-
-    for (let key in object) {
-        if (object.hasOwnProperty(key)) {
-            ++length;
+      identifiers.forEach(function (identifier) {
+        if (identifier.name === newIdentifier.name && newIdentifier.value) {
+          identifier.value = newIdentifier.value;
+          identifierFound = true;
         }
-    }
-    return length;
+      });
+
+      if (!identifierFound && newIdentifier.value) {
+        identifiers.push(newIdentifier);
+      }
+    });
+  }
+
+  return identifiers;
 }
 
 function getStoreUrl() {
@@ -222,26 +207,107 @@ function generateDocumentKey() {
   return 'restor_' + makeString(getTimestampMillis()) + rnd;
 }
 
-function determinateIsLoggingEnabled() {
-    const containerVersion = getContainerVersion();
-    const isDebug = !!(containerVersion && (containerVersion.debugMode || containerVersion.previewMode));
-
-    if (!data.logType) {
-        return isDebug;
-    }
-
-    if (data.logType === 'no') {
-        return false;
-    }
-
-    if (data.logType === 'debug') {
-        return isDebug;
-    }
-
-    return data.logType === 'always';
-}
+/*==============================================================================
+  Helpers
+==============================================================================*/
 
 function enc(data) {
-  data = data || '';
-  return encodeUriComponent(data);
+  return encodeUriComponent(makeString(data || ''));
+}
+
+function getObjectLength(object) {
+  let length = 0;
+
+  for (let key in object) {
+    if (object.hasOwnProperty(key)) {
+      ++length;
+    }
+  }
+  return length;
+}
+
+function log(rawDataToLog) {
+  const logDestinationsHandlers = {};
+  if (determinateIsLoggingEnabled()) logDestinationsHandlers.console = logConsole;
+  if (determinateIsLoggingEnabledForBigQuery()) logDestinationsHandlers.bigQuery = logToBigQuery;
+
+  const keyMappings = {
+    // No transformation for Console is needed.
+    bigQuery: {
+      Name: 'tag_name',
+      Type: 'type',
+      TraceId: 'trace_id',
+      EventName: 'event_name',
+      RequestMethod: 'request_method',
+      RequestUrl: 'request_url',
+      RequestBody: 'request_body',
+      ResponseStatusCode: 'response_status_code',
+      ResponseHeaders: 'response_headers',
+      ResponseBody: 'response_body'
+    }
+  };
+
+  for (const logDestination in logDestinationsHandlers) {
+    const handler = logDestinationsHandlers[logDestination];
+    if (!handler) continue;
+
+    const mapping = keyMappings[logDestination];
+    const dataToLog = mapping ? {} : rawDataToLog;
+
+    if (mapping) {
+      for (const key in rawDataToLog) {
+        const mappedKey = mapping[key] || key;
+        dataToLog[mappedKey] = rawDataToLog[key];
+      }
+    }
+
+    handler(dataToLog);
+  }
+}
+
+function logConsole(dataToLog) {
+  logToConsole(JSON.stringify(dataToLog));
+}
+
+function logToBigQuery(dataToLog) {
+  const connectionInfo = {
+    projectId: data.logBigQueryProjectId,
+    datasetId: data.logBigQueryDatasetId,
+    tableId: data.logBigQueryTableId
+  };
+
+  dataToLog.timestamp = getTimestampMillis();
+
+  ['request_body', 'response_headers', 'response_body'].forEach((p) => {
+    dataToLog[p] = JSON.stringify(dataToLog[p]);
+  });
+
+  BigQuery.insert(connectionInfo, [dataToLog], { ignoreUnknownValues: true });
+}
+
+function determinateIsLoggingEnabled() {
+  const containerVersion = getContainerVersion();
+  const isDebug = !!(
+    containerVersion &&
+    (containerVersion.debugMode || containerVersion.previewMode)
+  );
+
+  if (!data.logType) {
+    return isDebug;
+  }
+
+  if (data.logType === 'no') {
+    return false;
+  }
+
+  if (data.logType === 'debug') {
+    return isDebug;
+  }
+
+  return data.logType === 'always';
+}
+
+function determinateIsLoggingEnabledForBigQuery() {
+  if (data.bigQueryLogType === 'no') return false;
+  return data.bigQueryLogType === 'always';
 }
