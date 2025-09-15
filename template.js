@@ -9,6 +9,7 @@ const getContainerVersion = require('getContainerVersion');
 const generateRandom = require('generateRandom');
 const getTimestampMillis = require('getTimestampMillis');
 const makeString = require('makeString');
+const getType = require('getType');
 const BigQuery = require('BigQuery');
 
 /*==============================================================================
@@ -21,10 +22,21 @@ if (identifiersValues.length === 0) {
   return {};
 }
 
-const storeUrl = getStoreUrl();
+const storeUrl = getStoreBaseUrl(data);
 const postBody = {
-  data: [['identifiersValues', 'array-contains-any', identifiersValues]],
-  limit: 1
+  filter: {
+    operator: 'and',
+    conditions: [
+      {
+        field: 'identifiersValues',
+        operator: 'array-contains-any',
+        value: identifiersValues
+      }
+    ]
+  },
+  pagination: {
+    limit: 1
+  }
 };
 
 log({
@@ -42,9 +54,15 @@ return sendHttpRequest(
   { method: 'POST', headers: { 'Content-Type': 'application/json' } },
   JSON.stringify(postBody)
 ).then(
-  (documents) => {
-    const body = JSON.parse(documents.body);
-    const document = body && body.length > 0 ? body[0] : {};
+  (response) => {
+    const body = JSON.parse(response.body || '{}');
+    const document =
+      getType(body) === 'object' &&
+      getType(body.data) === 'object' &&
+      getType(body.data.items) === 'array' &&
+      getType(body.data.items[0]) === 'object'
+        ? body.data.items[0]
+        : {};
 
     return restoreData(document);
   },
@@ -58,7 +76,6 @@ return sendHttpRequest(
 ==============================================================================*/
 
 function restoreData(document) {
-  const documentKey = document.key || generateDocumentKey();
   const storedData = document.data || {};
   const dataToStore = {};
 
@@ -88,7 +105,8 @@ function restoreData(document) {
     return dataToStore;
   }
 
-  const writeUrl = getWriteUrl(documentKey);
+  const documentKey = document.key || generateDocumentKey();
+  const documentUrl = getDocumentUrl(data, documentKey);
   const mergedIdentifiers = mergeIdentifiers(storedData.identifiers, data.identifiers);
   const objectToStore = {
     identifiers: mergedIdentifiers,
@@ -100,14 +118,14 @@ function restoreData(document) {
     Name: 'StapeStoreReStore',
     Type: 'Request',
     TraceId: traceId,
-    EventName: 'StapeStoreReStorePost',
-    RequestMethod: 'POST',
-    RequestUrl: writeUrl,
+    EventName: 'StapeStoreReStorePut',
+    RequestMethod: 'PUT',
+    RequestUrl: documentUrl,
     RequestBody: objectToStore
   });
 
   return sendHttpRequest(
-    writeUrl,
+    documentUrl,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' } },
     JSON.stringify(objectToStore)
   ).then(
@@ -116,7 +134,7 @@ function restoreData(document) {
         Name: 'StapeStoreReStore',
         Type: 'Response',
         TraceId: traceId,
-        EventName: 'StapeStoreReStorePost',
+        EventName: 'StapeStoreReStorePut',
         ResponseStatusCode: 200,
         ResponseHeaders: {},
         ResponseBody: {}
@@ -129,7 +147,7 @@ function restoreData(document) {
         Name: 'StapeStoreReStore',
         Type: 'Response',
         TraceId: traceId,
-        EventName: 'StapeStoreReStorePost',
+        EventName: 'StapeStoreReStorePut',
         ResponseStatusCode: 500,
         ResponseHeaders: {},
         ResponseBody: {}
@@ -181,10 +199,11 @@ function mergeIdentifiers(oldIdentifiers, newIdentifiers) {
   return identifiers;
 }
 
-function getStoreUrl() {
+function getStoreBaseUrl(data) {
   const containerIdentifier = getRequestHeader('x-gtm-identifier');
   const defaultDomain = getRequestHeader('x-gtm-default-domain');
   const containerApiKey = getRequestHeader('x-gtm-api-key');
+  const collectionPath = 'collections/' + enc(data.collectionName || 'default') + '/documents';
 
   return (
     'https://' +
@@ -193,12 +212,14 @@ function getStoreUrl() {
     enc(defaultDomain) +
     '/stape-api/' +
     enc(containerApiKey) +
-    '/v1/store'
+    '/v2/store/' +
+    collectionPath
   );
 }
 
-function getWriteUrl(documentKey) {
-  return storeUrl + '/' + enc(documentKey);
+function getDocumentUrl(data, documentKey) {
+  const storeBaseUrl = getStoreBaseUrl(data);
+  return storeBaseUrl + '/' + enc(documentKey);
 }
 
 function generateDocumentKey() {
