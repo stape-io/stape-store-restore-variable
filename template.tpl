@@ -126,10 +126,10 @@ ___TEMPLATE_PARAMETERS___
     "subParams": [
       {
         "type": "TEXT",
-        "name": "collectionName",
-        "displayName": "Collection Name",
+        "name": "stapeStoreCollectionName",
+        "displayName": "Stape Store Collection Name",
         "simpleValueType": true,
-        "help": "The name of the collection on the Stape Store that contains (or will contain) the document with the data.\n\u003cbr/\u003e\u003cbr/\u003e\nIf not set, the \u003ci\u003edefault\u003c/i\u003e Collection Name will be used."
+        "help": "The name of the collection on the Stape Store that will contain the document with the data.\n\u003cbr/\u003e\u003cbr/\u003e\nIf not set, the \u003ci\u003edefault\u003c/i\u003e Collection Name will be used."
       }
     ]
   },
@@ -257,7 +257,7 @@ if (identifiersValues.length === 0) {
   return {};
 }
 
-const storeUrl = getStoreBaseUrl(data);
+const storeUrl = getStapeStoreBaseUrl(data);
 const postBody = {
   filter: {
     operator: 'and',
@@ -290,6 +290,16 @@ return sendHttpRequest(
   JSON.stringify(postBody)
 ).then(
   (response) => {
+    log({
+      Name: 'StapeStoreReStore',
+      Type: 'Response',
+      TraceId: traceId,
+      EventName: 'StapeStoreReStoreGet',
+      ResponseStatusCode: response.statusCode,
+      ResponseHeaders: {},
+      ResponseBody: response.body
+    });
+
     const body = JSON.parse(response.body || '{}');
     const document =
       getType(body) === 'object' &&
@@ -301,7 +311,17 @@ return sendHttpRequest(
 
     return restoreData(document);
   },
-  () => {
+  (response) => {
+    log({
+      Name: 'StapeStoreReStore',
+      Type: 'Response',
+      TraceId: traceId,
+      EventName: 'StapeStoreReStoreGet',
+      ResponseStatusCode: response.statusCode,
+      ResponseHeaders: {},
+      ResponseBody: response.body
+    });
+
     return restoreData({});
   }
 );
@@ -313,16 +333,6 @@ return sendHttpRequest(
 function restoreData(document) {
   const storedData = document.data || {};
   const dataToStore = {};
-
-  log({
-    Name: 'StapeStoreReStore',
-    Type: 'Response',
-    TraceId: traceId,
-    EventName: 'StapeStoreReStoreGet',
-    ResponseStatusCode: 200,
-    ResponseHeaders: {},
-    ResponseBody: storedData
-  });
 
   if (data.dataValues && data.dataValues.length > 0) {
     data.dataValues.forEach(function (dataObject) {
@@ -341,7 +351,7 @@ function restoreData(document) {
   }
 
   const documentKey = document.key || generateDocumentKey();
-  const documentUrl = getDocumentUrl(data, documentKey);
+  const documentUrl = getStapeStoreDocumentUrl(data, documentKey);
   const mergedIdentifiers = mergeIdentifiers(storedData.identifiers, data.identifiers);
   const objectToStore = {
     identifiers: mergedIdentifiers,
@@ -364,28 +374,28 @@ function restoreData(document) {
     { method: 'PUT', headers: { 'Content-Type': 'application/json' } },
     JSON.stringify(objectToStore)
   ).then(
-    () => {
+    (response) => {
       log({
         Name: 'StapeStoreReStore',
         Type: 'Response',
         TraceId: traceId,
         EventName: 'StapeStoreReStorePut',
-        ResponseStatusCode: 200,
+        ResponseStatusCode: response.statusCode,
         ResponseHeaders: {},
-        ResponseBody: {}
+        ResponseBody: response.body
       });
 
       return dataToStore;
     },
-    () => {
+    (response) => {
       log({
         Name: 'StapeStoreReStore',
         Type: 'Response',
         TraceId: traceId,
         EventName: 'StapeStoreReStorePut',
-        ResponseStatusCode: 500,
+        ResponseStatusCode: response.statusCode,
         ResponseHeaders: {},
-        ResponseBody: {}
+        ResponseBody: response.body
       });
 
       return dataToStore;
@@ -434,11 +444,12 @@ function mergeIdentifiers(oldIdentifiers, newIdentifiers) {
   return identifiers;
 }
 
-function getStoreBaseUrl(data) {
+function getStapeStoreBaseUrl(data) {
   const containerIdentifier = getRequestHeader('x-gtm-identifier');
   const defaultDomain = getRequestHeader('x-gtm-default-domain');
   const containerApiKey = getRequestHeader('x-gtm-api-key');
-  const collectionPath = 'collections/' + enc(data.collectionName || 'default') + '/documents';
+  const collectionPath =
+    'collections/' + enc(data.stapeStoreCollectionName || 'default') + '/documents';
 
   return (
     'https://' +
@@ -452,8 +463,8 @@ function getStoreBaseUrl(data) {
   );
 }
 
-function getDocumentUrl(data, documentKey) {
-  const storeBaseUrl = getStoreBaseUrl(data);
+function getStapeStoreDocumentUrl(data, documentKey) {
+  const storeBaseUrl = getStapeStoreBaseUrl(data);
   return storeBaseUrl + '/' + enc(documentKey);
 }
 
