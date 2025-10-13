@@ -14,6 +14,7 @@ ___INFO___
   "version": 1,
   "securityGroups": [],
   "displayName": "Stape Store reStore",
+  "categories": ["UTILITY", "DATA_WAREHOUSING"],
   "description": "Store data inside the Stape Store by identifiers (user_id, client_id, etc.). Restore data values in case they are found by identifiers. Useful for cookieless, cross-device, and cross-site tracking.",
   "containerContexts": [
     "SERVER"
@@ -139,11 +140,11 @@ ___TEMPLATE_PARAMETERS___
         "selectItems": [
           {
             "value": true,
-            "displayValue": "True"
+            "displayValue": "true"
           },
           {
             "value": false,
-            "displayValue": "False"
+            "displayValue": "false"
           }
         ],
         "simpleValueType": true,
@@ -290,8 +291,6 @@ const BigQuery = require('BigQuery');
 /*==============================================================================
 ==============================================================================*/
 
-const traceId = getRequestHeader('trace-id');
-
 const identifiersValues = getIdentifiersValues(data.identifiers);
 if (identifiersValues.length === 0) {
   return {};
@@ -317,7 +316,6 @@ const postBody = {
 log({
   Name: 'StapeStoreReStore',
   Type: 'Request',
-  TraceId: traceId,
   EventName: 'StapeStoreReStoreGet',
   RequestMethod: 'POST',
   RequestUrl: storeUrl,
@@ -333,7 +331,6 @@ return sendHttpRequest(
     log({
       Name: 'StapeStoreReStore',
       Type: 'Response',
-      TraceId: traceId,
       EventName: 'StapeStoreReStoreGet',
       ResponseStatusCode: response.statusCode,
       ResponseHeaders: {},
@@ -355,7 +352,6 @@ return sendHttpRequest(
     log({
       Name: 'StapeStoreReStore',
       Type: 'Response',
-      TraceId: traceId,
       EventName: 'StapeStoreReStoreGet',
       ResponseStatusCode: response.statusCode,
       ResponseHeaders: {},
@@ -402,7 +398,6 @@ function restoreData(document) {
   log({
     Name: 'StapeStoreReStore',
     Type: 'Request',
-    TraceId: traceId,
     EventName: 'StapeStoreReStorePut',
     RequestMethod: 'PUT',
     RequestUrl: documentUrl,
@@ -418,7 +413,6 @@ function restoreData(document) {
       log({
         Name: 'StapeStoreReStore',
         Type: 'Response',
-        TraceId: traceId,
         EventName: 'StapeStoreReStorePut',
         ResponseStatusCode: response.statusCode,
         ResponseHeaders: {},
@@ -431,7 +425,6 @@ function restoreData(document) {
       log({
         Name: 'StapeStoreReStore',
         Type: 'Response',
-        TraceId: traceId,
         EventName: 'StapeStoreReStorePut',
         ResponseStatusCode: response.statusCode,
         ResponseHeaders: {},
@@ -558,6 +551,8 @@ function log(rawDataToLog) {
   const logDestinationsHandlers = {};
   if (determinateIsLoggingEnabled()) logDestinationsHandlers.console = logConsole;
   if (determinateIsLoggingEnabledForBigQuery()) logDestinationsHandlers.bigQuery = logToBigQuery;
+
+  rawDataToLog.TraceId = getRequestHeader('trace-id');
 
   const keyMappings = {
     // No transformation for Console is needed.

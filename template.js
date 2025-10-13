@@ -15,8 +15,6 @@ const BigQuery = require('BigQuery');
 /*==============================================================================
 ==============================================================================*/
 
-const traceId = getRequestHeader('trace-id');
-
 const identifiersValues = getIdentifiersValues(data.identifiers);
 if (identifiersValues.length === 0) {
   return {};
@@ -42,7 +40,6 @@ const postBody = {
 log({
   Name: 'StapeStoreReStore',
   Type: 'Request',
-  TraceId: traceId,
   EventName: 'StapeStoreReStoreGet',
   RequestMethod: 'POST',
   RequestUrl: storeUrl,
@@ -58,7 +55,6 @@ return sendHttpRequest(
     log({
       Name: 'StapeStoreReStore',
       Type: 'Response',
-      TraceId: traceId,
       EventName: 'StapeStoreReStoreGet',
       ResponseStatusCode: response.statusCode,
       ResponseHeaders: {},
@@ -80,7 +76,6 @@ return sendHttpRequest(
     log({
       Name: 'StapeStoreReStore',
       Type: 'Response',
-      TraceId: traceId,
       EventName: 'StapeStoreReStoreGet',
       ResponseStatusCode: response.statusCode,
       ResponseHeaders: {},
@@ -127,7 +122,6 @@ function restoreData(document) {
   log({
     Name: 'StapeStoreReStore',
     Type: 'Request',
-    TraceId: traceId,
     EventName: 'StapeStoreReStorePut',
     RequestMethod: 'PUT',
     RequestUrl: documentUrl,
@@ -143,7 +137,6 @@ function restoreData(document) {
       log({
         Name: 'StapeStoreReStore',
         Type: 'Response',
-        TraceId: traceId,
         EventName: 'StapeStoreReStorePut',
         ResponseStatusCode: response.statusCode,
         ResponseHeaders: {},
@@ -156,7 +149,6 @@ function restoreData(document) {
       log({
         Name: 'StapeStoreReStore',
         Type: 'Response',
-        TraceId: traceId,
         EventName: 'StapeStoreReStorePut',
         ResponseStatusCode: response.statusCode,
         ResponseHeaders: {},
@@ -283,6 +275,8 @@ function log(rawDataToLog) {
   const logDestinationsHandlers = {};
   if (determinateIsLoggingEnabled()) logDestinationsHandlers.console = logConsole;
   if (determinateIsLoggingEnabledForBigQuery()) logDestinationsHandlers.bigQuery = logToBigQuery;
+
+  rawDataToLog.TraceId = getRequestHeader('trace-id');
 
   const keyMappings = {
     // No transformation for Console is needed.
