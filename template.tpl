@@ -14,6 +14,10 @@ ___INFO___
   "version": 1,
   "securityGroups": [],
   "displayName": "Stape Store reStore",
+  "categories": [
+    "UTILITY",
+    "DATA_WAREHOUSING"
+  ],
   "description": "Store data inside the Stape Store by identifiers (user_id, client_id, etc.). Restore data values in case they are found by identifiers. Useful for cookieless, cross-device, and cross-site tracking.",
   "containerContexts": [
     "SERVER"
@@ -119,6 +123,62 @@ ___TEMPLATE_PARAMETERS___
     ]
   },
   {
+    "type": "GROUP",
+    "name": "stapeStoreSettingsGroup",
+    "displayName": "Stape Store Settings",
+    "groupStyle": "ZIPPY_OPEN_ON_PARAM",
+    "subParams": [
+      {
+        "type": "TEXT",
+        "name": "stapeStoreCollectionName",
+        "displayName": "Stape Store Collection Name",
+        "simpleValueType": true,
+        "help": "The name of the collection on the Stape Store that contains (or will contain) the document with the data.\n\u003cbr/\u003e\u003cbr/\u003e\nIf not set, the \u003ci\u003edefault\u003c/i\u003e Collection Name will be used.",
+        "defaultValue": "default"
+      },
+      {
+        "type": "SELECT",
+        "name": "useDifferentStapeStore",
+        "displayName": "Use the Stape Store database of a different container",
+        "macrosInSelect": true,
+        "selectItems": [
+          {
+            "value": true,
+            "displayValue": "true"
+          },
+          {
+            "value": false,
+            "displayValue": "false"
+          }
+        ],
+        "simpleValueType": true,
+        "subParams": [
+          {
+            "type": "TEXT",
+            "name": "stapeStoreContainerApiKey",
+            "displayName": "Stape Store Container API Key",
+            "simpleValueType": true,
+            "valueHint": "euk:kzlfoobar:55ec021d429be49e64e691429cf0f27440a1b789kzlfoobar",
+            "help": "If you want to interact with the Stape Store of a different container hosted on Stape, specify the \u003cb\u003eContainer API Key\u003c/b\u003e of this container.\n\u003cbr/\u003e\u003cbr/\u003e\nTo find the \u003cb\u003eContainer API Key\u003c/b\u003e, go to the \u003ca href\u003d\"https://app.eu.stape.dev/container\"\u003eStape Admin panel\u003c/a\u003e, select the sGTM container which the Stape Store you want to interact with, go to the \u003ci\u003eSettings\u003c/i\u003e tab and scroll down to the \u003ci\u003eContainer settings\u003c/i\u003e section.",
+            "enablingConditions": [
+              {
+                "paramName": "useDifferentStapeStore",
+                "paramValue": false,
+                "type": "NOT_EQUALS"
+              }
+            ],
+            "valueValidators": [
+              {
+                "type": "NON_EMPTY"
+              }
+            ]
+          }
+        ],
+        "defaultValue": false
+      }
+    ]
+  },
+  {
     "displayName": "Logs Settings",
     "name": "logsGroup",
     "groupStyle": "ZIPPY_CLOSED",
@@ -145,11 +205,80 @@ ___TEMPLATE_PARAMETERS___
         "defaultValue": "debug"
       }
     ]
+  },
+  {
+    "displayName": "BigQuery Logs Settings",
+    "name": "bigQueryLogsGroup",
+    "groupStyle": "ZIPPY_CLOSED",
+    "type": "GROUP",
+    "subParams": [
+      {
+        "type": "RADIO",
+        "name": "bigQueryLogType",
+        "radioItems": [
+          {
+            "value": "no",
+            "displayValue": "Do not log to BigQuery"
+          },
+          {
+            "value": "always",
+            "displayValue": "Log to BigQuery"
+          }
+        ],
+        "simpleValueType": true,
+        "defaultValue": "no"
+      },
+      {
+        "type": "GROUP",
+        "name": "logsBigQueryConfigGroup",
+        "groupStyle": "NO_ZIPPY",
+        "subParams": [
+          {
+            "type": "TEXT",
+            "name": "logBigQueryProjectId",
+            "displayName": "BigQuery Project ID",
+            "simpleValueType": true,
+            "help": "Optional.  \u003cbr/\u003e\u003cbr/\u003e  If omitted, it will be retrieved from the environment variable \u003cI\u003eGOOGLE_CLOUD_PROJECT\u003c/i\u003e where the server container is running. If the server container is running on Google Cloud, \u003cI\u003eGOOGLE_CLOUD_PROJECT\u003c/i\u003e will already be set to the Google Cloud project\u0027s ID."
+          },
+          {
+            "type": "TEXT",
+            "name": "logBigQueryDatasetId",
+            "displayName": "BigQuery Dataset ID",
+            "simpleValueType": true,
+            "valueValidators": [
+              {
+                "type": "NON_EMPTY"
+              }
+            ]
+          },
+          {
+            "type": "TEXT",
+            "name": "logBigQueryTableId",
+            "displayName": "BigQuery Table ID",
+            "simpleValueType": true,
+            "valueValidators": [
+              {
+                "type": "NON_EMPTY"
+              }
+            ]
+          }
+        ],
+        "enablingConditions": [
+          {
+            "paramName": "bigQueryLogType",
+            "paramValue": "always",
+            "type": "EQUALS"
+          }
+        ]
+      }
+    ]
   }
 ]
 
 
 ___SANDBOXED_JS_FOR_SERVER___
+
+/// <reference path="./server-gtm-sandboxed-apis.d.ts" />
 
 const sendHttpRequest = require('sendHttpRequest');
 const encodeUriComponent = require('encodeUriComponent');
@@ -160,199 +289,221 @@ const getContainerVersion = require('getContainerVersion');
 const generateRandom = require('generateRandom');
 const getTimestampMillis = require('getTimestampMillis');
 const makeString = require('makeString');
+const getType = require('getType');
+const BigQuery = require('BigQuery');
 
-const isLoggingEnabled = determinateIsLoggingEnabled();
-const traceId = isLoggingEnabled ? getRequestHeader('trace-id') : undefined;
+/*==============================================================================
+==============================================================================*/
 
 const identifiersValues = getIdentifiersValues(data.identifiers);
 if (identifiersValues.length === 0) {
-    return {};
+  return {};
 }
 
-let storeUrl = getStoreUrl();
-let postBody = {
-    data: [[
-      'identifiersValues',
-      'array-contains-any',
-      identifiersValues
-    ]],
+const storeUrl = getStapeStoreBaseUrl(data);
+const postBody = {
+  filter: {
+    operator: 'and',
+    conditions: [
+      {
+        field: 'identifiersValues',
+        operator: 'array-contains-any',
+        value: identifiersValues
+      }
+    ]
+  },
+  pagination: {
     limit: 1
+  }
 };
 
-if (isLoggingEnabled) {
-    logToConsole(
-      JSON.stringify({
-          Name: 'StapeStoreReStore',
-          Type: 'Request',
-          TraceId: traceId,
-          EventName: 'StapeStoreReStoreGet',
-          RequestMethod: 'POST',
-          RequestUrl: storeUrl,
-          RequestBody: postBody,
-      })
-    );
-}
+log({
+  Name: 'StapeStoreReStore',
+  Type: 'Request',
+  EventName: 'StapeStoreReStoreGet',
+  RequestMethod: 'POST',
+  RequestUrl: storeUrl,
+  RequestBody: postBody
+});
 
-return sendHttpRequest(storeUrl, {method: 'POST', headers: { 'Content-Type': 'application/json' }}, JSON.stringify(postBody))
-  .then((documents) => {
-      let body = JSON.parse(documents.body);
-      let document = body && body.length > 0 ? body[0] : {};
+return sendHttpRequest(
+  storeUrl,
+  { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+  JSON.stringify(postBody)
+).then(
+  (response) => {
+    log({
+      Name: 'StapeStoreReStore',
+      Type: 'Response',
+      EventName: 'StapeStoreReStoreGet',
+      ResponseStatusCode: response.statusCode,
+      ResponseHeaders: {},
+      ResponseBody: response.body
+    });
 
-      return restoreData(document);
-  }, () => {
-      return restoreData({});
-  });
+    const body = JSON.parse(response.body || '{}');
+    const document =
+      getType(body) === 'object' &&
+      getType(body.data) === 'object' &&
+      getType(body.data.items) === 'array' &&
+      getType(body.data.items[0]) === 'object'
+        ? body.data.items[0]
+        : {};
+
+    return restoreData(document);
+  },
+  (response) => {
+    log({
+      Name: 'StapeStoreReStore',
+      Type: 'Response',
+      EventName: 'StapeStoreReStoreGet',
+      ResponseStatusCode: response.statusCode,
+      ResponseHeaders: {},
+      ResponseBody: response.body
+    });
+
+    return restoreData({});
+  }
+);
+
+/*==============================================================================
+  Vendor related functions
+==============================================================================*/
 
 function restoreData(document) {
-    let documentKey = document.key || generateDocumentKey();
-    let storedData = document.data || {};
-    let dataToStore = {};
+  const storedData = document.data || {};
+  const dataToStore = {};
 
+  if (data.dataValues && data.dataValues.length > 0) {
+    data.dataValues.forEach(function (dataObject) {
+      const item = dataObject.value;
 
-    if (isLoggingEnabled) {
-        logToConsole(
-          JSON.stringify({
-              Name: 'StapeStoreReStore',
-              Type: 'Response',
-              TraceId: traceId,
-              EventName: 'StapeStoreReStoreGet',
-              ResponseStatusCode: 200,
-              ResponseHeaders: {},
-              ResponseBody: storedData,
-          })
-        );
-    }
+      if (item && item.length > 0) {
+        dataToStore[dataObject.name] = item;
+      } else if (storedData.data && storedData.data[dataObject.name]) {
+        dataToStore[dataObject.name] = storedData.data[dataObject.name];
+      }
+    });
+  }
 
-    if (data.dataValues && data.dataValues.length > 0) {
-        data.dataValues.forEach(function (dataObject) {
-            let item = dataObject.value;
+  if (getObjectLength(dataToStore) === 0 || data.onlyRestore) {
+    return dataToStore;
+  }
 
-            if (item && item.length > 0) {
-                dataToStore[dataObject.name] = item;
-            } else if (storedData.data && storedData.data[dataObject.name]) {
-                dataToStore[dataObject.name] = storedData.data[dataObject.name];
-            }
-        });
-    }
+  const documentKey = document.key || generateDocumentKey();
+  const documentUrl = getStapeStoreDocumentUrl(data, documentKey);
+  const mergedIdentifiers = mergeIdentifiers(storedData.identifiers, data.identifiers);
+  const objectToStore = {
+    identifiers: mergedIdentifiers,
+    identifiersValues: getIdentifiersValues(mergedIdentifiers),
+    data: dataToStore
+  };
 
-    if (getObjectLength(dataToStore) === 0 || data.onlyRestore) {
-        return dataToStore;
-    }
+  log({
+    Name: 'StapeStoreReStore',
+    Type: 'Request',
+    EventName: 'StapeStoreReStorePut',
+    RequestMethod: 'PUT',
+    RequestUrl: documentUrl,
+    RequestBody: objectToStore
+  });
 
-    let writeUrl = getWriteUrl(documentKey);
-    let mergedIdentifiers = mergeIdentifiers(storedData.identifiers, data.identifiers);
-    let objectToStore = {
-        identifiers: mergedIdentifiers,
-        identifiersValues: getIdentifiersValues(mergedIdentifiers),
-        data: dataToStore,
-    };
-
-    if (isLoggingEnabled) {
-        logToConsole(
-          JSON.stringify({
-              Name: 'StapeStoreReStore',
-              Type: 'Request',
-              TraceId: traceId,
-              EventName: 'StapeStoreReStorePost',
-              RequestMethod: 'POST',
-              RequestUrl: writeUrl,
-              RequestBody: objectToStore,
-          })
-        );
-    }
-
-    return sendHttpRequest(writeUrl, {method: 'PUT', headers: { 'Content-Type': 'application/json' }}, JSON.stringify(objectToStore))
-      .then(() => {
-          if (isLoggingEnabled) {
-              logToConsole(
-                JSON.stringify({
-                    Name: 'StapeStoreReStore',
-                    Type: 'Response',
-                    TraceId: traceId,
-                    EventName: 'StapeStoreReStorePost',
-                    ResponseStatusCode: 200,
-                    ResponseHeaders: {},
-                    ResponseBody: {},
-                })
-              );
-          }
-
-          return dataToStore;
-      }, function () {
-          if (isLoggingEnabled) {
-              logToConsole(
-                JSON.stringify({
-                    Name: 'StapeStoreReStore',
-                    Type: 'Response',
-                    TraceId: traceId,
-                    EventName: 'StapeStoreReStorePost',
-                    ResponseStatusCode: 500,
-                    ResponseHeaders: {},
-                    ResponseBody: {},
-                })
-              );
-          }
-
-          return dataToStore;
+  return sendHttpRequest(
+    documentUrl,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' } },
+    JSON.stringify(objectToStore)
+  ).then(
+    (response) => {
+      log({
+        Name: 'StapeStoreReStore',
+        Type: 'Response',
+        EventName: 'StapeStoreReStorePut',
+        ResponseStatusCode: response.statusCode,
+        ResponseHeaders: {},
+        ResponseBody: response.body
       });
+
+      return dataToStore;
+    },
+    (response) => {
+      log({
+        Name: 'StapeStoreReStore',
+        Type: 'Response',
+        EventName: 'StapeStoreReStorePut',
+        ResponseStatusCode: response.statusCode,
+        ResponseHeaders: {},
+        ResponseBody: response.body
+      });
+
+      return dataToStore;
+    }
+  );
 }
 
 function getIdentifiersValues(identifiers) {
-    let identifiersValues = [];
+  const identifiersValues = [];
 
-    if (identifiers && identifiers.length > 0) {
-        identifiers.forEach(function (identifier) {
-            if (identifier.value) {
-                identifiersValues.push(identifier.value);
-            }
-        });
-    }
+  if (identifiers && identifiers.length > 0) {
+    identifiers.forEach(function (identifier) {
+      if (identifier.value) {
+        identifiersValues.push(identifier.value);
+      }
+    });
+  }
 
-    return identifiersValues;
+  return identifiersValues;
 }
 
 function mergeIdentifiers(oldIdentifiers, newIdentifiers) {
-    let identifiers = [];
+  let identifiers = [];
 
-    if (oldIdentifiers && oldIdentifiers.length > 0) {
-        identifiers = oldIdentifiers;
-    }
+  if (oldIdentifiers && oldIdentifiers.length > 0) {
+    identifiers = oldIdentifiers;
+  }
 
-    if (newIdentifiers && newIdentifiers.length > 0) {
-        newIdentifiers.forEach(function (newIdentifier) {
-            let identifierFound = false;
+  if (newIdentifiers && newIdentifiers.length > 0) {
+    newIdentifiers.forEach(function (newIdentifier) {
+      let identifierFound = false;
 
-            identifiers.forEach(function (identifier) {
-                if (identifier.name === newIdentifier.name && newIdentifier.value) {
-                    identifier.value = newIdentifier.value;
-                    identifierFound = true;
-                }
-            });
-
-            if (!identifierFound && newIdentifier.value) {
-                identifiers.push(newIdentifier);
-            }
-        });
-    }
-
-    return identifiers;
-}
-
-function getObjectLength(object) {
-    let length = 0;
-
-    for (let key in object) {
-        if (object.hasOwnProperty(key)) {
-            ++length;
+      identifiers.forEach(function (identifier) {
+        if (identifier.name === newIdentifier.name && newIdentifier.value) {
+          identifier.value = newIdentifier.value;
+          identifierFound = true;
         }
-    }
-    return length;
+      });
+
+      if (!identifierFound && newIdentifier.value) {
+        identifiers.push(newIdentifier);
+      }
+    });
+  }
+
+  return identifiers;
 }
 
-function getStoreUrl() {
-  const containerIdentifier = getRequestHeader('x-gtm-identifier');
-  const defaultDomain = getRequestHeader('x-gtm-default-domain');
-  const containerApiKey = getRequestHeader('x-gtm-api-key');
+function getStapeStoreBaseUrl(data) {
+  let containerIdentifier;
+  let defaultDomain;
+  let containerApiKey;
+  const collectionPath =
+    'collections/' + enc(data.stapeStoreCollectionName || 'default') + '/documents';
+
+  const shouldUseDifferentStore =
+    isUIFieldTrue(data.useDifferentStapeStore) &&
+    getType(data.stapeStoreContainerApiKey) === 'string';
+  if (shouldUseDifferentStore) {
+    const containerApiKeyParts = data.stapeStoreContainerApiKey.split(':');
+
+    const containerLocation = containerApiKeyParts[0];
+    const containerRegion = containerApiKeyParts[3] || 'io';
+    containerIdentifier = containerApiKeyParts[1];
+    defaultDomain = containerLocation + '.stape.' + containerRegion;
+    containerApiKey = containerApiKeyParts[2];
+  } else {
+    containerIdentifier = getRequestHeader('x-gtm-identifier');
+    defaultDomain = getRequestHeader('x-gtm-default-domain');
+    containerApiKey = getRequestHeader('x-gtm-api-key');
+  }
 
   return (
     'https://' +
@@ -361,12 +512,14 @@ function getStoreUrl() {
     enc(defaultDomain) +
     '/stape-api/' +
     enc(containerApiKey) +
-    '/v1/store'
+    '/v2/store/' +
+    collectionPath
   );
 }
 
-function getWriteUrl(documentKey) {
-  return storeUrl + '/' + enc(documentKey);
+function getStapeStoreDocumentUrl(data, documentKey) {
+  const storeBaseUrl = getStapeStoreBaseUrl(data);
+  return storeBaseUrl + '/' + enc(documentKey);
 }
 
 function generateDocumentKey() {
@@ -375,28 +528,115 @@ function generateDocumentKey() {
   return 'restor_' + makeString(getTimestampMillis()) + rnd;
 }
 
-function determinateIsLoggingEnabled() {
-    const containerVersion = getContainerVersion();
-    const isDebug = !!(containerVersion && (containerVersion.debugMode || containerVersion.previewMode));
+/*==============================================================================
+  Helpers
+==============================================================================*/
 
-    if (!data.logType) {
-        return isDebug;
-    }
-
-    if (data.logType === 'no') {
-        return false;
-    }
-
-    if (data.logType === 'debug') {
-        return isDebug;
-    }
-
-    return data.logType === 'always';
+function isUIFieldTrue(field) {
+  return [true, 'true', 1, '1'].indexOf(field) !== -1;
 }
 
 function enc(data) {
-  data = data || '';
-  return encodeUriComponent(data);
+  return encodeUriComponent(makeString(data || ''));
+}
+
+function getObjectLength(object) {
+  let length = 0;
+
+  for (let key in object) {
+    if (object.hasOwnProperty(key)) {
+      ++length;
+    }
+  }
+  return length;
+}
+
+function log(rawDataToLog) {
+  const logDestinationsHandlers = {};
+  if (determinateIsLoggingEnabled()) logDestinationsHandlers.console = logConsole;
+  if (determinateIsLoggingEnabledForBigQuery()) logDestinationsHandlers.bigQuery = logToBigQuery;
+
+  rawDataToLog.TraceId = getRequestHeader('trace-id');
+
+  const keyMappings = {
+    // No transformation for Console is needed.
+    bigQuery: {
+      Name: 'tag_name',
+      Type: 'type',
+      TraceId: 'trace_id',
+      EventName: 'event_name',
+      RequestMethod: 'request_method',
+      RequestUrl: 'request_url',
+      RequestBody: 'request_body',
+      ResponseStatusCode: 'response_status_code',
+      ResponseHeaders: 'response_headers',
+      ResponseBody: 'response_body'
+    }
+  };
+
+  for (const logDestination in logDestinationsHandlers) {
+    const handler = logDestinationsHandlers[logDestination];
+    if (!handler) continue;
+
+    const mapping = keyMappings[logDestination];
+    const dataToLog = mapping ? {} : rawDataToLog;
+
+    if (mapping) {
+      for (const key in rawDataToLog) {
+        const mappedKey = mapping[key] || key;
+        dataToLog[mappedKey] = rawDataToLog[key];
+      }
+    }
+
+    handler(dataToLog);
+  }
+}
+
+function logConsole(dataToLog) {
+  logToConsole(JSON.stringify(dataToLog));
+}
+
+function logToBigQuery(dataToLog) {
+  const connectionInfo = {
+    projectId: data.logBigQueryProjectId,
+    datasetId: data.logBigQueryDatasetId,
+    tableId: data.logBigQueryTableId
+  };
+
+  dataToLog.timestamp = getTimestampMillis();
+
+  ['request_body', 'response_headers', 'response_body'].forEach((p) => {
+    dataToLog[p] = JSON.stringify(dataToLog[p]);
+  });
+
+  BigQuery.insert(connectionInfo, [dataToLog], { ignoreUnknownValues: true });
+}
+
+function determinateIsLoggingEnabled() {
+  const containerVersion = getContainerVersion();
+  const isDebug = !!(
+    containerVersion &&
+    (containerVersion.debugMode || containerVersion.previewMode)
+  );
+
+  if (!data.logType) {
+    return isDebug;
+  }
+
+  if (data.logType === 'no') {
+    return false;
+  }
+
+  if (data.logType === 'debug') {
+    return isDebug;
+  }
+
+  return data.logType === 'always';
+}
+
+function determinateIsLoggingEnabledForBigQuery() {
+  if (data.bigQueryLogType === 'no') return false;
+  return data.bigQueryLogType === 'always';
 }
 
 
@@ -556,6 +796,67 @@ ___SERVER_PERMISSIONS___
           "value": {
             "type": 1,
             "string": "any"
+          }
+        }
+      ]
+    },
+    "clientAnnotations": {
+      "isEditedByUser": true
+    },
+    "isRequired": true
+  },
+  {
+    "instance": {
+      "key": {
+        "publicId": "access_bigquery",
+        "versionId": "1"
+      },
+      "param": [
+        {
+          "key": "allowedTables",
+          "value": {
+            "type": 2,
+            "listItem": [
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "projectId"
+                  },
+                  {
+                    "type": 1,
+                    "string": "datasetId"
+                  },
+                  {
+                    "type": 1,
+                    "string": "tableId"
+                  },
+                  {
+                    "type": 1,
+                    "string": "operation"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "*"
+                  },
+                  {
+                    "type": 1,
+                    "string": "*"
+                  },
+                  {
+                    "type": 1,
+                    "string": "*"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  }
+                ]
+              }
+            ]
           }
         }
       ]
