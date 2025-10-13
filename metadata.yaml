@@ -1,7 +1,7 @@
 homepage: 'https://stape.io/'
 documentation: 'https://github.com/stape-io/stape-store-restore-variable'
 versions:
-  - sha: eb91e1c897cd5a97933e0d43ad4084a08da493cc
+  - sha: 5edaadc520266b3aa59e4c2f95dca7b9daca7f2f
     changeNotes: Added Stape Store 2.0 support. Added BigQuery logging support.
   - sha: 30550da636ceb29703e51dc200974d045e008fc1
     changeNotes: Fix issue with logs.
