@@ -22,3 +22,6 @@ The variable looks up a user profile using the provided identifiers, restores st
 ## Open Source
 
 The **Stape Store reStore Variable for GTM Server Side** is developed and maintained by [Stape Team](https://stape.io/) under the Apache 2.0 license.
+
+### GTM Gallery Status
+🟢 [Listed](https://tagmanager.google.com/gallery/#/owners/stape-io/templates/stape-store-restore-variable)
