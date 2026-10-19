@@ -1,6 +1,8 @@
 homepage: 'https://stape.io/'
 documentation: 'https://github.com/stape-io/stape-store-restore-variable'
 versions:
+  - sha: 7e633d3024fd19b1e79be3ca63c088e7c51f6623
+    changeNotes: Stape Store was renamed to Stape Data Store.
   - sha: e06861807037cb173794fe3fe2469c6d6bbfb93b
     changeNotes: Console and BigQuery logging removal.
   - sha: 5edaadc520266b3aa59e4c2f95dca7b9daca7f2f
