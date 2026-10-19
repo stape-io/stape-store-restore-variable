@@ -13,12 +13,12 @@ ___INFO___
   "id": "cvt_temp_public_id",
   "version": 1,
   "securityGroups": [],
-  "displayName": "Stape Store reStore",
+  "displayName": "Stape Data Store reStore",
   "categories": [
     "UTILITY",
     "DATA_WAREHOUSING"
   ],
-  "description": "Store data inside the Stape Store by identifiers (user_id, client_id, etc.). Restore data values in case they are found by identifiers. Useful for cookieless, cross-device, and cross-site tracking.",
+  "description": "Store data in Stape Data Store by identifiers (user_id, client_id, etc.). Restore data values in case they are found by identifiers. Useful for cookieless, cross-device, and cross-site tracking.",
   "containerContexts": [
     "SERVER"
   ]
@@ -33,7 +33,7 @@ ___TEMPLATE_PARAMETERS___
     "name": "onlyRestore",
     "checkboxText": "Only restore data",
     "simpleValueType": true,
-    "help": "It will prevent writing data to the Stape Store. Useful if you want to only get data by identifiers."
+    "help": "It will prevent writing data to the Stape Data Store. Useful if you want to only get data by identifiers."
   },
   {
     "type": "GROUP",
@@ -125,21 +125,21 @@ ___TEMPLATE_PARAMETERS___
   {
     "type": "GROUP",
     "name": "stapeStoreSettingsGroup",
-    "displayName": "Stape Store Settings",
+    "displayName": "Stape Data Store Settings",
     "groupStyle": "ZIPPY_OPEN_ON_PARAM",
     "subParams": [
       {
         "type": "TEXT",
         "name": "stapeStoreCollectionName",
-        "displayName": "Stape Store Collection Name",
+        "displayName": "Stape Data Store Collection Name",
         "simpleValueType": true,
-        "help": "The name of the collection on the Stape Store that contains (or will contain) the document with the data.\n\u003cbr/\u003e\u003cbr/\u003e\nIf not set, the \u003ci\u003edefault\u003c/i\u003e Collection Name will be used.",
+        "help": "The name of the collection on the Stape Data Store that contains (or will contain) the document with the data.\n\u003cbr/\u003e\u003cbr/\u003e\nIf not set, the \u003ci\u003edefault\u003c/i\u003e Collection Name will be used.",
         "defaultValue": "default"
       },
       {
         "type": "SELECT",
         "name": "useDifferentStapeStore",
-        "displayName": "Use the Stape Store database of a different container",
+        "displayName": "Use the Stape Data Store database of a different container",
         "macrosInSelect": true,
         "selectItems": [
           {
@@ -156,10 +156,10 @@ ___TEMPLATE_PARAMETERS___
           {
             "type": "TEXT",
             "name": "stapeStoreContainerApiKey",
-            "displayName": "Stape Store Container API Key",
+            "displayName": "Stape Data Store Container API Key",
             "simpleValueType": true,
             "valueHint": "euk:kzlfoobar:55ec021d429be49e64e691429cf0f27440a1b789kzlfoobar",
-            "help": "If you want to interact with the Stape Store of a different container hosted on Stape, specify the \u003cb\u003eContainer API Key\u003c/b\u003e of this container.\n\u003cbr/\u003e\u003cbr/\u003e\nTo find the \u003cb\u003eContainer API Key\u003c/b\u003e, go to the \u003ca href\u003d\"https://app.eu.stape.dev/container\"\u003eStape Admin panel\u003c/a\u003e, select the sGTM container which the Stape Store you want to interact with, go to the \u003ci\u003eSettings\u003c/i\u003e tab and scroll down to the \u003ci\u003eContainer settings\u003c/i\u003e section.",
+            "help": "If you want to interact with the Stape Data Store of a different container hosted on Stape, specify the \u003cb\u003eContainer API Key\u003c/b\u003e of this container.\n\u003cbr/\u003e\u003cbr/\u003e\nTo find the \u003cb\u003eContainer API Key\u003c/b\u003e, go to the \u003ca href\u003d\"https://app.eu.stape.dev/container\"\u003eStape Admin panel\u003c/a\u003e, select the sGTM container which the Stape Data Store you want to interact with, go to the \u003ci\u003eSettings\u003c/i\u003e tab and scroll down to the \u003ci\u003eContainer settings\u003c/i\u003e section.",
             "enablingConditions": [
               {
                 "paramName": "useDifferentStapeStore",
@@ -527,6 +527,9 @@ scenarios: []
 
 
 ___NOTES___
+
+2026-10-19 - Change Notes:
+  - Stape Store was renamed to Stape Data Store.
 
 2026-05-21 Change Notes:
  - Console and BigQuery logging removal.
